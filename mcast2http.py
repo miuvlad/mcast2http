@@ -182,10 +182,8 @@ if __name__ == "__main__":
                         help="Daemonize process.")
     parser.add_argument("--pidfile", default="/var/tmp/mcast2http.pid",
                         help="File to write process identifier to when daemonized.")
-    parser.add_argument("--mcastip", type=str,
-                        help="""Source IPv4 address to join multicast groups from.
-                        NOTE! If unset, a short TCP connection to google.com
-                        will determine the local address.""")
+    parser.add_argument("--mcastip", type=str, required=True,
+                        help="Source IPv4 address to join multicast groups from.")
     parser.add_argument("--timeout", default=2000, type=int,
                         help="""Time out requests after this long.
                              (Default: 2000 [milliseconds])""")
@@ -206,15 +204,6 @@ if __name__ == "__main__":
         basicConfig(level=DEBUG)
     else:
         basicConfig(level=INFO)
-
-    # I'm not very happy about this, but it seems like the only semi-
-    # portable way to find what public IP address is going to be used.
-    if args.mcastip is None:
-        debug("Connecting to google.com to find our public address...")
-        s = socket.create_connection(("ipv4.google.com", 80))
-        assert s.family == socket.AF_INET
-        args.mcastip = s.getsockname()[0]
-        s.close()
 
     debug("Will join groups from ip4:%s" % args.mcastip)
 
