@@ -17,7 +17,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 """
 import sys
-import struct
 import socket
 import argparse
 import BaseHTTPServer
@@ -115,8 +114,7 @@ class RelayHandler(SimpleHTTPRequestHandler):
 
         sock.setsockopt(socket.SOL_IP, socket.IP_MULTICAST_IF,
                         socket.inet_aton(self.server.config.mcastip))
-        mreq = struct.pack('4sl', socket.inet_aton(addr[0]), socket.INADDR_ANY)
-        sock.setsockopt(socket.SOL_IP, socket.IP_ADD_MEMBERSHIP, mreq)
+        sock.setsockopt(socket.SOL_IP, socket.IP_ADD_MEMBERSHIP, socket.inet_aton(addr[0]) + socket.inet_aton(self.server.config.mcastip))
         sock.settimeout(self.server.config.timeout / 1.0e3)
 
         initial_read = True
