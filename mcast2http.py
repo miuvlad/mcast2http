@@ -21,13 +21,28 @@ import socket
 import argparse
 import BaseHTTPServer
 import SocketServer
+from base64 import b64encode
 from time import time
 from urlparse import urlparse
-from logging import basicConfig, DEBUG, INFO, debug, info
+import logging
 from SimpleHTTPServer import SimpleHTTPRequestHandler
 
-READ_BUFFER_SIZE = 4096
+globalLogger = logging.getLogger("mcast2http")
 
+fileLogging = logging.FileHandler("/var/log/mcast2http.log")
+fileLogging.setFormatter(logging.Formatter('%(asctime)s : %(name)s/%(threadName)s %(levelname)s in %(funcName)s -> %(message)s'))
+
+consoleLogging = logging.StreamHandler(sys.stdout)
+consoleLogging.setFormatter(logging.Formatter('%(asctime)s : %(name)s/%(threadName)s %(levelname)s in %(funcName)s -> %(message)s'))
+
+globalLogger.addHandler(fileLogging)
+globalLogger.addHandler(consoleLogging)
+
+
+READ_BUFFER_SIZE = 4096
+HTTPBasicAuth = [
+    {"username": "username", "password": "password"}
+]
 
 def is_class_d(addr):
     """
@@ -91,12 +106,37 @@ class RelayHandler(SimpleHTTPRequestHandler):
         self.send_header("Connection", "close")
         self.end_headers()
 
+    def do_AUTHHEAD(self):
+        self.send_response(401)
+        self.send_header('WWW-Authenticate', 'Basic realm=\"%s\"' % self.server_version)
+        self.send_header('Content-type', 'text/html')
+        self.end_headers()
+
+
     def do_GET(self):
         # Try out some delay-related socket options on client connection.
         self.connection.setsockopt(socket.SOL_TCP, socket.TCP_NODELAY, 1)
         self.connection.setsockopt(socket.IPPROTO_IP, socket.IP_TOS, 0x10)
 
-        info("%s requested %s" % (self.client_address[0], self.path))
+        # Check authentication
+        globalLogger.info("%s requested %s" % (self.client_address[0], self.path))
+        if self.headers.get('Authorization') is None:
+            globalLogger.info("%s did not provide authentication")
+            self.do_AUTHHEAD()
+            return False
+
+        authUsername = None
+        for authInfo in HTTPBasicAuth:
+            authString = "%s:%s" % (authInfo['username'], authInfo['password'])
+            encodedAuthString = b64encode(authString)
+            if self.headers.get('Authorization') == "Basic %s" % encodedAuthString:
+                authUsername = authInfo['username']
+                break
+
+        if authUsername is None:
+            globalLogger.info("%s did not provide a valid authentication")
+            self.do_AUTHHEAD()
+            return False
 
         if self.path in ["/", "/favicon.ico"]:
             return self.synth_error(403, "Forbidden")
@@ -123,7 +163,7 @@ class RelayHandler(SimpleHTTPRequestHandler):
             try:
                 chunk = sock.recv(READ_BUFFER_SIZE)
             except socket.timeout as e:
-                info("%s read timeout after %.2fs: %s" %
+                globalLogger.info("%s read timeout after %.2fs: %s" %
                      (self.path, time() - t0, e.message))
 
                 if initial_read:
@@ -138,7 +178,7 @@ class RelayHandler(SimpleHTTPRequestHandler):
                 self.send_header("Access-Control-Allow-Origin", "*")
                 self.send_header("Connection", "close")
                 self.end_headers()
-                info("%s:%s ttfb %.3fms" % (addr[0], addr[1],
+                globalLogger.info("%s:%s ttfb %.3fms" % (addr[0], addr[1],
                                             (time() - t0)*1.0e3))
 
             try:
@@ -151,11 +191,11 @@ class RelayHandler(SimpleHTTPRequestHandler):
                 if e.errno == 104:  # Connection reset by peer.
                     pass
                 else:
-                    info("%s %s: %s" % (self.client_address[0], self.path,
+                    globalLogger.info("%s %s: %s" % (self.client_address[0], self.path,
                                         str(e)))
                 break
 
-        info("%s finished %s:%s after %i bytes" %
+        globalLogger.info("%s finished %s:%s after %i bytes" %
              (self.client_address[0], addr[0], addr[1], bytecount))
         del sock
 
@@ -193,11 +233,11 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     if args.verbose:
-        basicConfig(level=DEBUG)
+        globalLogger.setLevel(logging.DEBUG)
     else:
-        basicConfig(level=INFO)
+        globalLogger.setLevel(logging.INFO)
 
-    debug("Will join groups from ip4:%s" % args.mcastip)
+    globalLogger.debug("Will join groups from ip4:%s" % args.mcastip)
 
     SocketServer.TCPServer.allow_reuse_address = True
     if ":" in args.listen:  # Dirty
@@ -206,9 +246,9 @@ if __name__ == "__main__":
     httpd = ThreadedHTTPServer((args.listen, args.port), RelayHandler)
     httpd.config = args
 
-    info("Listening on port [%s]:%s" % (args.listen, args.port))
+    globalLogger.info("Listening on port [%s]:%s" % (args.listen, args.port))
 
     try:
         httpd.serve_forever()
     except KeyboardInterrupt:
-        info("Ctrl-c caught, normal exit")
+        globalLogger.info("Ctrl-c caught, normal exit")
