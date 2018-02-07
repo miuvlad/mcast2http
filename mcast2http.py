@@ -26,8 +26,6 @@ from urlparse import urlparse
 from logging import basicConfig, DEBUG, INFO, debug, info
 from SimpleHTTPServer import SimpleHTTPRequestHandler
 
-import daemon
-
 READ_BUFFER_SIZE = 4096
 
 
@@ -51,7 +49,7 @@ def is_class_d(addr):
 
 
 class RelayHandler(SimpleHTTPRequestHandler):
-    sys_version = "v0.1"
+    sys_version = "v0.1a"
     server_version = "mcast2http"
 
     def synth_error(self, returncode, message):
@@ -176,10 +174,6 @@ if __name__ == "__main__":
         epilog="Relay multicast data to HTTP clients.")
     parser.add_argument("-v", "--verbose", action="store_true",
                         help="Be verbose.")
-    parser.add_argument("--fork", action="store_true", default=False,
-                        help="Daemonize process.")
-    parser.add_argument("--pidfile", default="/var/tmp/mcast2http.pid",
-                        help="File to write process identifier to when daemonized.")
     parser.add_argument("--mcastip", type=str, required=True,
                         help="Source IPv4 address to join multicast groups from.")
     parser.add_argument("--timeout", default=2000, type=int,
@@ -211,9 +205,6 @@ if __name__ == "__main__":
 
     httpd = ThreadedHTTPServer((args.listen, args.port), RelayHandler)
     httpd.config = args
-
-    if args.fork:
-        daemon.daemonize(args.pidfile)
 
     info("Listening on port [%s]:%s" % (args.listen, args.port))
 
